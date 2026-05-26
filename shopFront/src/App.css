@@ -1,0 +1,378 @@
+/* ============================================================
+   Layout principal do app
+   ============================================================ */
+.app {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 32px 16px 48px;
+  text-align: left;
+}
+
+.app-title {
+  text-align: center;
+  font-size: 2rem;
+  margin: 0 0 24px;
+  letter-spacing: -0.5px;
+}
+
+/* Botão que abre o modal de adicionar */
+.btn-abrir-form {
+  display: block;
+  width: 100%;
+  padding: 12px 20px;
+  margin-bottom: 28px;
+  background: #16a34a;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  text-align: center;
+}
+
+.btn-abrir-form:hover {
+  background: #15803d;
+}
+
+.btn-abrir-form:active {
+  background: #166534;
+}
+
+/* ============================================================
+   Formulário (dentro do modal)
+   ============================================================ */
+.form-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-input {
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 16px;
+  background: var(--bg);
+  color: var(--text-h);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.form-input:focus {
+  outline: 2px solid #16a34a;
+  outline-offset: 1px;
+}
+
+/* Mensagem de erro de validação do formulário */
+.form-error {
+  margin: 0;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  color: #b91c1c;
+  font-size: 0.9rem;
+}
+
+/* Botão de adicionar dentro do modal — verde */
+.btn-adicionar {
+  padding: 11px 20px;
+  background: #16a34a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  width: 100%;
+}
+
+.btn-adicionar:hover {
+  background: #15803d;
+}
+
+.btn-adicionar:active {
+  background: #166534;
+}
+
+/* ============================================================
+   Lista de compras
+   ============================================================ */
+.list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.list-title {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+}
+
+.lista-vazia {
+  text-align: center;
+  color: var(--text);
+  padding: 32px 24px;
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  font-size: 1rem;
+  margin: 0;
+}
+
+.lista {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Cada item — borda e fundo diferenciados */
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.item-nome {
+  flex: 1;
+  color: var(--text-h);
+  font-weight: 500;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-width: 0;
+}
+
+.item-quantidade {
+  color: var(--text);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+/* Grupo de informações numéricas do item (quantidade, preço, subtotal) */
+.item-detalhes {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.item-preco {
+  white-space: nowrap;
+}
+
+/* Subtotal destacado em relação ao preço unitário */
+.item-subtotal {
+  font-weight: 600;
+  color: var(--text-h);
+  white-space: nowrap;
+}
+
+/* Rodapé da lista com o total geral */
+.lista-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  margin-top: 4px;
+  border-top: 2px solid var(--border);
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.lista-total-valor {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-h);
+}
+
+/* Botão de remover — vermelho, visivelmente diferente do verde */
+.btn-remover {
+  padding: 6px 14px;
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+
+.btn-remover:hover {
+  background: #b91c1c;
+}
+
+.btn-remover:active {
+  background: #991b1b;
+}
+
+/* ============================================================
+   Modal — backdrop e card
+   ============================================================ */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 100;
+  animation: fadeIn 0.15s ease;
+}
+
+.modal-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  width: 100%;
+  max-width: 440px;
+  animation: slideUp 0.18s ease;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 20px 0;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 1.15rem;
+  color: var(--text-h);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: background 0.15s;
+}
+
+.modal-close:hover {
+  background: var(--accent-bg);
+  color: var(--text-h);
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+/* ============================================================
+   Modal de confirmação de remoção
+   ============================================================ */
+.confirm-text {
+  margin: 0 0 20px;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.confirm-text strong {
+  color: var(--text-h);
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.btn-cancelar {
+  padding: 9px 18px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-cancelar:hover {
+  background: var(--code-bg);
+}
+
+.btn-confirmar-remover {
+  padding: 9px 18px;
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-confirmar-remover:hover {
+  background: #b91c1c;
+}
+
+/* ============================================================
+   Animações
+   ============================================================ */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* ============================================================
+   Responsividade — mobile
+   ============================================================ */
+@media (max-width: 480px) {
+  .app {
+    padding: 20px 12px 32px;
+  }
+
+  .list-item {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .item-detalhes {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .btn-remover {
+    width: 100%;
+    text-align: center;
+  }
+
+  .confirm-actions {
+    flex-direction: column-reverse;
+  }
+
+  .btn-cancelar,
+  .btn-confirmar-remover {
+    width: 100%;
+    text-align: center;
+  }
+}

@@ -1,0 +1,718 @@
+================================================================================
+  PROGRESSION.TXT — Diário de Desenvolvimento: Aplicativo Mercadinho
+  Projeto: shopFront (React + Vite + TypeScript)
+  Data: 2026-05-26
+================================================================================
+
+--------------------------------------------------------------------------------
+  DIAGNÓSTICO INICIAL — O que existia antes das mudanças
+--------------------------------------------------------------------------------
+
+Antes de qualquer alteração, o projeto tinha 4 arquivos relevantes:
+  - src/App.tsx
+  - src/components/ShoppingForm.tsx
+  - src/components/ShoppingList.tsx
+  - src/db/seed.ts
+  - src/App.css
+
+Problemas identificados em cada arquivo:
+
+  App.tsx
+  - Renderizava <ShoppingForm /> DUAS vezes (duplicação acidental).
+  - Declarava três useState (productName, quantity, price) que não eram usados
+    em lugar nenhum — estado morto.
+  - Renderizava diretamente a mockShoppingList do seed, misturando dados
+    estáticos com o restante do layout.
+  - Não havia comunicação entre ShoppingForm e ShoppingList.
+
+  ShoppingForm.tsx
+  - Gerenciava seu próprio carrinho local (useState<CartItem[]>) — isolado,
+    invisível para o restante do app.
+  - Tinha um campo "Preço" que não existe nos requisitos da atividade e nem
+    no schema ShoppingItem (id, nome, quantidade).
+  - A função handleAddToCart NÃO gerava ID único para o item — ao adicionar
+    dois itens com o mesmo nome, o React poderia compartilhar o mesmo índice
+    e causar bugs ao remover um deles.
+  - Após adicionar, os campos NÃO eram limpos (RF03 não implementado).
+  - Zero validação: nome vazio, espaços em branco, quantidade zero ou negativa
+    eram todos aceitos silenciosamente.
+  - Código cheio de comentários longos explicando o óbvio.
+
+  ShoppingList.tsx
+  - Renderizava apenas a mockShoppingList importada do seed — dados estáticos
+    fixos, nunca refletia o que o usuário adicionava via formulário.
+  - Nenhum botão "Remover" nos itens (RF04 e RF05 não implementados).
+  - Nenhuma mensagem para lista vazia.
+
+  App.css
+  - Continha apenas os estilos padrão gerados pelo Vite (hero, counter, ticks,
+    etc.) — nenhum estilo relacionado ao app de lista de compras.
+  - Botões de adicionar e remover não existiam, portanto sem diferenciação
+    de cores.
+  - Sem margin/padding adequados para o layout do projeto.
+  - Sem borda ou fundo diferenciado para os itens da lista.
+
+
+--------------------------------------------------------------------------------
+  PROBLEMA RAIZ: ARQUITETURA QUEBRADA (State Isolation)
+--------------------------------------------------------------------------------
+
+O problema central era que ShoppingForm e ShoppingList viviam em "bolhas"
+separadas — cada um com seu próprio estado, sem canal de comunicação.
+
+  ShoppingForm         ShoppingList
+  [estado: cart]       [estado: mockShoppingList]
+       |                        |
+       v                        v
+   renderiza                renderiza
+   (visível só             (lista fixa
+    para ele)               do seed)
+
+A solução correta em React para este caso é o padrão "Lifting State Up"
+(levantar o estado): o estado da lista sobe para o componente pai (App),
+que passa os dados para baixo via props para ambos os filhos.
+
+  App
+  [estado: shoppingList]  <-- única fonte da verdade
+       |              |
+       v              v
+  ShoppingForm    ShoppingList
+  (recebe onAdd)  (recebe items + onRemove)
+
+Desta forma, quando o formulário chama onAdd(), o App atualiza sua lista,
+e o React re-renderiza ShoppingList automaticamente com os dados novos.
+
+
+================================================================================
+  PARTE 1 — App.tsx: Levantamento de Estado e Limpeza
+================================================================================
+
+Arquivo: src/App.tsx
+Status: CONCLUÍDO
+
+Decisões tomadas:
+
+  1. Estado único da lista
+     Criado um único useState<ShoppingItem[]>([]) iniciando com array vazio.
+     O motivo de iniciar vazio (e não com mockShoppingList) é que a atividade
+     pede um app funcional de lista de compras — o usuário deve adicionar seus
+     próprios itens, não ver dados de teste pré-carregados.
+
+  2. Função adicionarItem
+     Criada dentro do App e passada para ShoppingForm via prop onAdd.
+     Usa o padrão funcional de atualização de estado (prev => [...prev, novoItem])
+     ao invés de depender do valor atual do estado diretamente. Isso evita
+     condições de corrida em cliques rápidos (teste do "Cliquenildo" no TDD).
+
+  3. Geração de ID com Date.now().toString()
+     Cada item recebe um ID único baseado no timestamp em milissegundos.
+     Isso garante que dois "Arroz" adicionados sequencialmente tenham IDs
+     diferentes, então ao remover um, apenas ele some — sem o bug de
+     "ID compartilhado" descrito no TDD.
+
+  4. Função removerItem
+     Recebe o id do item, usa .filter() para criar nova lista sem ele,
+     e atualiza o estado. O React detecta a mudança e re-renderiza
+     ShoppingList automaticamente. Também usa o padrão funcional (prev =>).
+
+  5. Remoção de código desnecessário
+     - Eliminados os três useState não utilizados (productName, quantity, price).
+     - Eliminada a segunda instância de <ShoppingForm />.
+     - Eliminada a renderização direta da mockShoppingList.
+     - App agora renderiza apenas o título + <ShoppingForm> + <ShoppingList>.
+
+  6. Estrutura JSX simplificada
+     Um único <div className="app"> envolve tudo, sem fragmentos desnecessários.
+
+
+================================================================================
+  PARTE 2 — ShoppingForm.tsx: Validação, Reset e Props
+================================================================================
+
+Arquivo: src/components/ShoppingForm.tsx
+Status: CONCLUÍDO
+
+Decisões tomadas:
+
+  1. Recebe onAdd via props
+     O componente não sabe mais nada sobre a lista — apenas chama onAdd()
+     quando o usuário clica em "Adicionar". Quem decide o que fazer com os
+     dados é o App (separação de responsabilidades).
+
+  2. Estado local apenas para os inputs
+     Dois useState locais: nome (string) e quantidade (string).
+     Nota importante: quantidade é string, não number. O motivo é que
+     um campo <input type="number"> com value=0 exibe "0" na tela assim
+     que o componente monta — confuso para o usuário. Usando string vazia
+     ("") o campo começa visivelmente em branco, e convertemos para Number
+     apenas no momento da validação/envio.
+
+  3. Campo "Preço" removido
+     O campo de preço não existe nos requisitos funcionais da atividade
+     (atividade.md) nem no schema ShoppingItem (seed.ts). Era código extra
+     que não pertencia aqui.
+
+  4. Validações implementadas (handleAdicionar):
+
+     a) Nome vazio ou só espaços:
+        nome.trim() retorna string vazia se o usuário não digitou nada ou
+        digitou apenas espaços. A função retorna sem fazer nada.
+        Cobre: teste do "Vazio" e teste do "Espaço em Branco" do TDD.
+
+     b) Quantidade inválida:
+        Number(quantidade) converte a string para número.
+        - Se a string for vazia: Number("") === 0 → bloqueado pelo !qtd.
+        - Se for texto tipo "duas": Number("duas") === NaN → bloqueado
+          por !Number.isFinite(qtd).
+        - Se for zero: bloqueado por !qtd (0 é falsy).
+        - Se for negativo: bloqueado por qtd <= 0.
+        Cobre: teste da "Quantidade Zero ou Negativa" e "Texto na Quantidade".
+
+  5. Reset dos campos após adicionar
+     Após chamar onAdd(), os estados nome e quantidade voltam para "".
+     Isso limpa os inputs visualmente na tela (RF03 da atividade).
+     Cobre: teste da "Limpeza de Campos" do TDD.
+
+  6. Prop min="1" no input de quantidade
+     Impede o seletor de setas do browser de ir abaixo de 1.
+     A validação no código continua sendo a barreira principal — o atributo
+     min é apenas uma ajuda visual para o usuário.
+
+
+================================================================================
+  PARTE 3 — ShoppingList.tsx: Botão Remover, Props e Lista Vazia
+================================================================================
+
+Arquivo: src/components/ShoppingList.tsx
+Status: CONCLUÍDO
+
+Decisões tomadas:
+
+  1. Recebe items e onRemove via props
+     Não importa mais mockShoppingList — os dados chegam do App via props.
+     Isso torna o componente "puro": a mesma lista que entra, a mesma que
+     é renderizada. Testável e previsível.
+
+  2. Renderização condicional: lista vazia
+     Se items.length === 0, exibe a mensagem "Sua lista está vazia!" dentro
+     de um parágrafo com classe .lista-vazia (estilizado com borda tracejada).
+     Cobre: teste da "Lista Vazia" do TDD.
+
+  3. Botão Remover em cada item
+     Cada <li> agora tem um <button className="btn-remover"> que chama
+     onRemove(item.id) quando clicado. O id passado ao App permite que
+     .filter() identifique e remova exatamente aquele item.
+     Cobre: RF05 da atividade e teste de "Remoção em Cadeia" do TDD.
+
+  4. Estrutura do item: nome + quantidade + botão
+     - span.item-nome: flex: 1 + overflow-wrap: break-word para textos longos.
+       Cobre: teste do "Nome Gigante" — o texto quebra a linha em vez de
+       estourar o layout ou empurrar o botão para fora.
+     - span.item-quantidade: exibe "Qtd: N", flex-shrink: 0 via CSS.
+     - button.btn-remover: flex-shrink: 0 — nunca encolhe ou desaparece.
+
+  5. key={item.id} correto
+     Como cada item tem ID único (gerado por Date.now() no App), a prop key
+     é sempre única. O React consegue reconciliar a lista corretamente ao
+     adicionar ou remover itens. Cobre: o bug do "Item Duplicado" do TDD.
+
+
+================================================================================
+  PARTE 4 — App.css: Estilização Completa do App
+================================================================================
+
+Arquivo: src/App.css
+Status: CONCLUÍDO
+
+O arquivo foi completamente reescrito. Os estilos padrão do Vite (hero,
+counter, ticks, #next-steps, etc.) foram descartados — eram estilos de
+demonstração sem uso no projeto.
+
+Decisões de design tomadas:
+
+  1. Layout centralizado (.app)
+     max-width: 620px + margin: 0 auto centraliza o app na tela.
+     padding: 32px 16px garante espaço nas bordas (requisito de espaçamento).
+     text-align: left sobrescreve o text-align: center do #root do index.css,
+     evitando que todo conteúdo do app fique centralizado por padrão.
+
+  2. Separação visual: formulário vs. lista
+     .form-container tem border, border-radius, padding e fundo (background:
+     var(--social-bg)) — visualmente separado do restante da tela.
+     margin-bottom: 32px cria espaço generoso entre o formulário e a lista.
+     Cobre: requisito "Organização" da atividade.
+
+  3. Diferenciação de botões (verde vs. vermelho)
+     .btn-adicionar: background #16a34a (verde escuro). Comunica "ação positiva".
+     .btn-remover: background #dc2626 (vermelho). Comunica "ação destrutiva".
+     As cores foram escolhidas com contraste suficiente para acessibilidade.
+     Ambos têm estado :hover e :active para feedback visual ao toque/clique.
+     Cobre: requisito "Destaque Visual" e "Contraste de Botões" da atividade,
+     e teste de "Contraste" do TDD.
+
+  4. Diferenciação de itens da lista
+     .list-item tem border: 1px solid var(--border), border-radius: 8px,
+     background: var(--bg) e box-shadow leve.
+     A lista usa gap: 8px entre os itens, criando separação visual clara.
+     Cobre: requisito "Identificação de Itens" da atividade.
+
+  5. Texto longo no item
+     .item-nome tem overflow-wrap: break-word + word-break: break-word +
+     min-width: 0. O min-width: 0 é necessário porque em flexbox os filhos
+     têm min-width: auto por padrão, impedindo que o texto quebre.
+     Cobre: teste do "Nome Gigante" do TDD.
+
+  6. Responsividade mobile (@media max-width: 480px)
+     Em telas pequenas:
+     - padding reduzido para não desperdiçar espaço.
+     - .list-item usa flex-wrap: wrap para empilhar os elementos.
+     - .btn-adicionar e .btn-remover ficam com width: 100% — fáceis de
+       tocar com o polegar em dispositivos móveis.
+     Cobre: teste do "Dedão (Mobile)" do TDD.
+
+  7. Uso das variáveis CSS do projeto (var(--border), var(--bg), etc.)
+     O index.css já define variáveis para claro e escuro. Usar essas
+     variáveis garante que o app automaticamente suporte tema escuro
+     sem nenhum trabalho extra.
+
+
+================================================================================
+  COBERTURA FINAL DOS CRITÉRIOS
+================================================================================
+
+  Requisitos Funcionais (atividade.md):
+  [X] RF01 - Campos de nome e quantidade no formulário
+  [X] RF02 - Clicar em "Adicionar" insere o item na lista imediatamente
+  [X] RF03 - Campos são limpos após adicionar
+  [X] RF04 - Lista exibe nome, quantidade e botão de exclusão por item
+  [X] RF05 - Clicar em "Remover" remove o item instantaneamente
+
+  Critérios Visuais (atividade.md):
+  [X] Separação visual entre formulário e lista
+  [X] margin e padding aplicados (não espremido)
+  [X] Botão Adicionar (verde) diferente do Remover (vermelho)
+  [X] Itens da lista com borda/fundo separando-os visualmente
+
+  Critérios Técnicos — Checklist de Avaliação (atividade.md):
+  [X] useState para lista e para os inputs
+  [X] onChange nos inputs para capturar o que é digitado
+  [X] onClick funcional no botão de adicionar
+  [X] Lista renderizada com .map()
+  [X] Itens removidos individualmente atualizando o estado
+  [X] Inputs ficam em branco após adicionar
+  [X] CSS em arquivo separado (App.css)
+  [X] Botões de adicionar e remover com cores/estilos bem diferentes
+  [X] margin/padding aplicados no layout
+  [X] Cada item da lista com borda/fundo diferenciado
+
+  Testes TDD (TDD.md):
+  [X] Teste do "Vazio" — nome.trim() bloqueia envio se vazio
+  [X] Teste da Quantidade Zero ou Negativa — qtd <= 0 bloqueado
+  [X] Teste do Espaço em Branco — .trim() pega só espaços
+  [X] Teste do Texto na Quantidade — !Number.isFinite() captura NaN
+  [X] Teste do Item Duplicado — IDs únicos por Date.now()
+  [X] Teste de Remoção em Cadeia — .filter() por ID é preciso
+  [X] Teste do Botão "Cliquenildo" — prev => [...prev] é seguro em cliques rápidos
+  [X] Teste do Nome Gigante — overflow-wrap + word-break no CSS
+  [X] Teste do "Dedão" (Mobile) — botões com width: 100% em < 480px
+  [X] Teste de Contraste — verde vs. vermelho com alta distinção
+  [X] Teste da Limpeza de Campos — reset após onAdd()
+  [X] Teste da Lista Vazia — mensagem "Sua lista está vazia!"
+
+
+================================================================================
+  ARQUIVOS MODIFICADOS
+================================================================================
+
+  src/App.tsx            — Reescrito: estado levantado, funções adicionarItem
+                           e removerItem, JSX limpo sem duplicatas.
+
+  src/components/ShoppingForm.tsx
+                         — Reescrito: recebe prop onAdd, valida inputs,
+                           limpa campos, sem campo de preço.
+
+  src/components/ShoppingList.tsx
+                         — Reescrito: recebe props items e onRemove, botão
+                           remover em cada item, mensagem de lista vazia.
+
+  src/App.css            — Reescrito: CSS completo do app substituindo os
+                           estilos padrão do Vite.
+
+  PROGRESSION.TXT        — Criado: este arquivo de documentação.
+
+  src/db/seed.ts         — NÃO modificado. O schema ShoppingItem e a
+                           mockShoppingList continuam disponíveis mas não
+                           são mais usados como estado inicial — apenas
+                           como referência de tipo.
+
+--------------------------------------------------------------------------------
+  CORREÇÃO PÓS-BUILD — verbatimModuleSyntax
+--------------------------------------------------------------------------------
+
+Após o primeiro build, o TypeScript apontou dois erros TS1484:
+  "ShoppingItem is a type and must be imported using a type-only import
+   when verbatimModuleSyntax is enabled."
+
+O tsconfig.app.json do projeto usa verbatimModuleSyntax: true, que exige
+que importações de tipos sejam marcadas com "import type" para que o
+compilador saiba que pode descartar o import sem analisar o módulo inteiro.
+
+Correções aplicadas:
+  - src/App.tsx:          import { ShoppingItem }  ->  import type { ShoppingItem }
+  - src/components/ShoppingList.tsx: idem.
+
+Build final: sucesso — 0 erros, 0 warnings.
+
+================================================================================
+  PARTE 5 — Modais: Interações via Overlay (2026-05-26)
+================================================================================
+
+Requisito: substituir interações diretas na tela por modais, tornando o fluxo
+mais limpo e focado — o usuário não vê o formulário o tempo todo, e a remoção
+exige uma confirmação explícita antes de acontecer.
+
+Dois modais foram criados:
+  1. Modal de adição   — abre ao clicar em "+ Adicionar Item"
+  2. Modal de remoção  — abre ao clicar em "Remover" em qualquer item da lista
+
+--------------------------------------------------------------------------------
+  Novo arquivo: src/components/Modal.tsx
+--------------------------------------------------------------------------------
+
+Componente reutilizável que recebe:
+  - isOpen: boolean      — controla se o modal é renderizado ou não
+  - onClose: () => void  — callback chamado ao fechar (backdrop, botão ✕, Esc)
+  - title: string        — título exibido no cabeçalho
+  - children: ReactNode  — conteúdo variável (formulário ou confirmação)
+
+Decisões:
+
+  1. Renderização condicional com guard "if (!isOpen) return null"
+     O componente não existe no DOM quando fechado — nenhum CSS de visibilidade
+     (display: none / opacity: 0) foi usado. Isso evita que elementos dentro do
+     modal (inputs, botões) recebam foco por Tab quando o modal está fechado.
+
+  2. Fechar ao clicar no backdrop
+     O backdrop tem onClick={onClose}. O card interno tem
+     onClick={(e) => e.stopPropagation()} para que cliques dentro do card não
+     propaguem para o backdrop e fechem o modal acidentalmente.
+
+  3. Fechar com tecla Escape
+     useEffect adiciona um listener de 'keydown' quando isOpen é true e o
+     remove no cleanup. Isso é UX padrão esperado por usuários de teclado e
+     leitores de tela. O listener é limpo automaticamente quando o modal fecha
+     ou o componente é desmontado.
+
+  4. aria-label="Fechar" no botão ✕
+     O botão usa o caractere ✕ visualmente mas possui aria-label para que
+     leitores de tela anunciem "Fechar" em vez de "x" ou "símbolo".
+
+--------------------------------------------------------------------------------
+  Mudanças em App.tsx
+--------------------------------------------------------------------------------
+
+Dois novos estados adicionados:
+
+  isFormOpen: boolean
+    false por padrão. O botão "+ Adicionar Item" o seta para true.
+    A função adicionarItem o seta para false após inserir o item — o modal
+    fecha automaticamente no sucesso, sem o usuário precisar clicar em ✕.
+
+  confirmId: string | null
+    null por padrão (nenhuma confirmação pendente).
+    confirmarRemover(id) seta esse estado, abrindo o modal de confirmação.
+    removerItem() filtra a lista usando confirmId e reseta para null.
+
+  itemParaRemover = shoppingList.find(item => item.id === confirmId)
+    Derivado do estado, não armazenado em useState. Usado para exibir o nome
+    do item no modal de confirmação ("Remover 'Arroz' da lista?").
+
+Função confirmarRemover substituiu a chamada direta a removerItem no prop
+onRemove do ShoppingList. O ShoppingList em si não precisou mudar — ele
+continua chamando onRemove(id), mas agora esse callback abre o modal em vez
+de remover diretamente.
+
+--------------------------------------------------------------------------------
+  Mudanças em ShoppingForm.tsx
+--------------------------------------------------------------------------------
+
+O h2 "Adicionar Produto" foi removido — o Modal já exibe esse título.
+O .form-container perdeu border e background — o Modal card provê o
+container visual. O formulário agora é apenas os inputs + botão.
+
+--------------------------------------------------------------------------------
+  Mudanças em App.css
+--------------------------------------------------------------------------------
+
+Estilos do Modal:
+
+  .modal-backdrop
+    position: fixed + inset: 0 cobre toda a viewport independente do scroll.
+    background: rgba(0,0,0,0.5) escurece o conteúdo por trás.
+    z-index: 100 garante que fique acima de qualquer outro elemento.
+    animation: fadeIn 0.15s para entrada suave.
+
+  .modal-card
+    max-width: 440px + width: 100% — comporta em celular (com padding de 16px
+    no backdrop) e desktop.
+    animation: slideUp 0.18s — o card sobe levemente ao aparecer, reforçando
+    a sensação de "aparecer da tela" em vez de piscar abruptamente.
+
+  .modal-close
+    background: none — invisível até hover, onde recebe background sutil.
+    Mantém área de clique generosa (padding) sem parecer um botão pesado.
+
+Estilos do modal de confirmação:
+
+  .confirm-actions: flex row com gap, alinhado à direita (justify-content: flex-end).
+  .btn-cancelar: borda + fundo transparente — ação neutra, visualmente recessiva.
+  .btn-confirmar-remover: vermelho — ação destrutiva, visualmente proeminente.
+
+  Em mobile (< 480px), .confirm-actions vira flex-direction: column-reverse.
+  O botão "Remover" fica em cima (mais fácil de tocar) e "Cancelar" embaixo.
+  column-REVERSE porque a ordem visual fica "Remover → Cancelar" de cima para
+  baixo mas a ordem no DOM (e no foco por Tab) ainda é "Cancelar → Remover",
+  o que é mais seguro: o Tab natural leva ao cancelar antes do destruir.
+
+Animações:
+
+  @keyframes fadeIn: opacity 0→1 no backdrop.
+  @keyframes slideUp: translateY(16px)→0 + opacity 0→1 no card.
+  Tempo curto (150-180ms) para não atrasar a interação — apenas suaviza.
+
+--------------------------------------------------------------------------------
+  Fluxo completo pós-modal
+--------------------------------------------------------------------------------
+
+  ADICIONAR:
+  Usuário clica "+ Adicionar Item"
+    → isFormOpen = true → Modal (formulário) aparece
+    → Usuário preenche nome + quantidade + clica "Adicionar"
+    → handleAdicionar() valida → onAdd() → adicionarItem() no App
+    → item adicionado à lista + isFormOpen = false → Modal fecha sozinho
+
+  REMOVER:
+  Usuário clica "Remover" em um item da lista
+    → confirmarRemover(id) → confirmId = id → Modal (confirmação) aparece
+    → Modal exibe "Remover 'Nome do Produto' da lista?"
+    → Se "Cancelar": confirmId = null → Modal fecha, item intocado
+    → Se "Remover": removerItem() filtra lista + confirmId = null → Modal fecha
+
+================================================================================
+  PARTE 6 — Componentização do App.tsx e Dados Iniciais do Seed (2026-05-26)
+================================================================================
+
+Objetivo: reduzir o App.tsx a pura composição visual, extraindo lógica e
+conteúdo de UI para unidades menores e testáveis, e inicializar o app com
+os dados do seed para que o usuário já veja a interface preenchida.
+
+--------------------------------------------------------------------------------
+  Novo arquivo: src/hooks/useShoppingList.ts
+--------------------------------------------------------------------------------
+
+Custom hook que centraliza TODO o estado e as operações da lista de compras.
+O App.tsx não declara mais nenhum useState — ele apenas consome o hook.
+
+Estados encapsulados:
+  shoppingList    — array de ShoppingItem, inicializado com mockShoppingList
+  isFormOpen      — boolean, controla modal de adição
+  confirmId       — string | null, ID do item aguardando confirmação de remoção
+
+Funções exportadas:
+  adicionarItem(nome, quantidade)
+    Cria novo ShoppingItem com ID único (Date.now()), adiciona à lista e
+    fecha o modal de adição. Usa padrão funcional (prev =>) para segurança
+    em atualizações rápidas e consecutivas.
+
+  confirmarRemover(id)
+    Seta confirmId — não remove nada ainda. Apenas abre o modal de confirmação.
+
+  removerItem()
+    Lê confirmId e filtra a lista. Reseta confirmId ao final, fechando o modal.
+
+  cancelarRemocao()
+    Reseta confirmId sem modificar a lista.
+
+Valor derivado (não é estado):
+  itemParaRemover = shoppingList.find(item => item.id === confirmId)
+    Não usa useState porque é 100% derivável do estado existente.
+    Recalculado automaticamente a cada render. Usado para exibir o nome
+    do item no modal de confirmação.
+
+Inicialização com seed:
+  useState<ShoppingItem[]>(mockShoppingList) substitui o array vazio anterior.
+  O usuário abre o app e já vê 10 produtos na lista, permitindo testar
+  remoção e adição sem precisar preencher dados manualmente primeiro.
+
+--------------------------------------------------------------------------------
+  Novo arquivo: src/components/ConfirmDialog.tsx
+--------------------------------------------------------------------------------
+
+Extrai o conteúdo do modal de confirmação para seu próprio componente.
+Antes, o JSX da confirmação estava inline no App.tsx — misturando estrutura
+visual com composição, dificultando leitura e reutilização.
+
+Props:
+  itemNome: string | undefined — nome exibido na pergunta. undefined é
+    tratado graciosamente (React renderiza undefined como nada).
+  onConfirm: () => void — chamado ao confirmar remoção
+  onCancel: () => void — chamado ao cancelar
+
+O Modal continua genérico (aceita qualquer children). O ConfirmDialog é
+apenas o "recheio" desse modal específico — separação clara de papéis.
+
+Ordem dos botões: Cancelar → Remover (da esquerda para direita / Tab).
+Ação destrutiva sempre depois da ação segura na ordem de foco, mesmo que
+visualmente o Remover esteja mais à direita (mais destacado).
+
+--------------------------------------------------------------------------------
+  Mudanças em App.tsx
+--------------------------------------------------------------------------------
+
+Antes: 55 linhas com useState, funções e JSX misturados.
+Depois: 52 linhas — mas agora zero useState, zero lógica de negócio.
+
+O componente se torna um "orquestrador visual":
+  1. Desestrutura tudo de useShoppingList()
+  2. Renderiza título + botão de abertura + ShoppingList
+  3. Renderiza dois modais com seus respectivos conteúdos
+  4. Cada bloco JSX tem um comentário de uma linha explicando o propósito
+
+Comentário no componente explica a divisão de responsabilidade:
+  "Raiz do app — responsável apenas por composição. Toda a lógica de estado
+   vive em useShoppingList; este componente só conecta os pedaços visuais."
+
+--------------------------------------------------------------------------------
+  Estrutura final de arquivos
+--------------------------------------------------------------------------------
+
+  src/
+  ├── App.tsx                     — composição pura (sem lógica)
+  ├── App.css                     — estilos do app
+  ├── main.tsx                    — ponto de entrada React
+  ├── index.css                   — estilos globais / variáveis CSS
+  ├── hooks/
+  │   └── useShoppingList.ts      — todo o estado e operações da lista
+  ├── components/
+  │   ├── Modal.tsx               — overlay genérico reutilizável
+  │   ├── ConfirmDialog.tsx       — conteúdo do modal de confirmação
+  │   ├── ShoppingForm.tsx        — formulário de adição (controlado)
+  │   └── ShoppingList.tsx        — lista de itens com botão remover
+  └── db/
+      └── seed.ts                 — schema ShoppingItem + dados iniciais
+
+--------------------------------------------------------------------------------
+  Princípio aplicado: Separation of Concerns
+--------------------------------------------------------------------------------
+
+Cada arquivo tem uma única responsabilidade clara:
+  - hooks/useShoppingList   → O QUÊ o app faz (estado e lógica)
+  - App.tsx                 → COMO as peças se encaixam (composição)
+  - components/*            → COMO cada peça aparece (UI)
+  - db/seed.ts              → DE ONDE vêm os dados iniciais
+
+================================================================================
+  PARTE 7 — Campo de Preço, Mensagens de Erro e Seed com Preços (2026-05-26)
+================================================================================
+
+Três mudanças solicitadas:
+  1. Mensagem de erro visível quando a quantidade for negativa ou inválida
+  2. Campo de preço unitário no formulário
+  3. Preços aleatórios realistas nos dados do seed
+
+--------------------------------------------------------------------------------
+  src/db/seed.ts — adição do campo preco
+--------------------------------------------------------------------------------
+
+ShoppingItem ganhou o campo:
+  preco: number  — valor unitário em reais
+
+Cada item do mockShoppingList recebeu um preço realista de supermercado
+(ex: Arroz 5kg → R$ 24,90; Perfume 100ml → R$ 89,90).
+Os preços são estáticos no seed — servem apenas para popular o estado inicial.
+
+--------------------------------------------------------------------------------
+  src/components/ShoppingForm.tsx — campo de preço + mensagem de erro
+--------------------------------------------------------------------------------
+
+Novo campo:
+  preco: string  — estado local do input de preço, igual a quantidade:
+                   string vazia inicialmente, convertido para Number na
+                   validação. input type="number" com step="0.01" para aceitar
+                   centavos.
+
+Novo estado:
+  erro: string   — mensagem de erro exibida abaixo dos inputs.
+                   Vazio = sem erro = elemento <p> não renderizado (condição {erro && ...}).
+
+Lógica de erro:
+  A validação em handleAdicionar percorre os campos na ordem nome → quantidade
+  → preço. Ao encontrar o primeiro inválido, seta a mensagem correspondente e
+  retorna sem prosseguir. Isso evita mostrar múltiplos erros ao mesmo tempo —
+  o usuário corrige um por vez.
+
+  Mensagens definidas:
+    "O nome do produto não pode estar vazio."
+    "A quantidade deve ser maior que zero."
+    "O preço deve ser maior que zero."
+
+limparErro():
+  Chamada no onChange de todos os inputs. Limpa o estado erro quando o
+  usuário começa a digitar após um erro — o feedback desaparece assim que
+  ele interage, sem precisar tentar enviar novamente primeiro.
+
+onAdd agora recebe três argumentos: (nome, quantidade, preco).
+
+--------------------------------------------------------------------------------
+  src/hooks/useShoppingList.ts — assinatura de adicionarItem atualizada
+--------------------------------------------------------------------------------
+
+adicionarItem(nome, quantidade, preco):
+  Adicionado o terceiro parâmetro preco, incluído no objeto novoItem.
+  Nenhuma outra mudança — a lógica de ID, estado e fechamento de modal
+  permanece idêntica.
+
+--------------------------------------------------------------------------------
+  src/components/ShoppingList.tsx — exibição de preço e total geral
+--------------------------------------------------------------------------------
+
+formatarPreco(valor):
+  Função utilitária local que usa toLocaleString('pt-BR', currency: 'BRL').
+  Formata automaticamente: 24.9 → "R$ 24,90", 89.9 → "R$ 89,90".
+  Sem dependência externa — a API Intl.NumberFormat do browser faz o trabalho.
+
+Cada item agora exibe três informações numéricas em .item-detalhes:
+  - Qtd: N           — quantidade
+  - R$ X,XX un.      — preço unitário
+  - R$ Y,YY          — subtotal (preco × quantidade), em negrito
+
+totalGeral:
+  Calculado com .reduce() ao renderizar — soma preco × quantidade de todos
+  os itens. Valor derivado, não armazenado em estado (recalculado a cada render).
+  Exibido no rodapé .lista-total abaixo da lista, com destaque tipográfico.
+
+--------------------------------------------------------------------------------
+  src/App.css — novos estilos
+--------------------------------------------------------------------------------
+
+.form-error
+  Caixa de erro com fundo vermelho-claro (#fef2f2), borda vermelha (#fca5a5)
+  e texto escuro (#b91c1c). Aparece apenas quando há mensagem de erro.
+  Palette derivada do Tailwind red-100/red-300/red-700 para consistência.
+
+.item-detalhes
+  Flex row para agrupar quantidade, preço unitário e subtotal lado a lado.
+  flex-shrink: 0 impede que o grupo encolha e quebre o layout do item.
+
+.item-subtotal
+  font-weight: 600 + color: var(--text-h) para destacar o total do item
+  em relação ao preço unitário.
+
+.lista-total / .lista-total-valor
+  Rodapé separado por border-top da lista.
+  .lista-total-valor: font-size: 1.15rem + font-weight: 700 para o total
+  ser o elemento mais destacado da seção de lista.
+
+================================================================================
+  FIM DO REGISTRO
+================================================================================
